@@ -1,21 +1,36 @@
 [package]
 name = "rob-back-end"
 version = "0.1.0"
+license-file = "LICENSE"
+description = "The back end for the Rob the Builder build system"
 authors = ["Ryan Tolboom <rxt1077@njit.edu>"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[package.metadata.deb]
+maintainer = "Ryan Tolboom <rxt1077@njit.edu>"
+copyright = "2021, Ryan Tolboom <rxt1077@njit.edu>"
+depends = ""
+section = "Development"
+priority = "optional"
+assets = [
+  ["target/x86_64-unknown-linux-musl/release/rob-back-end", "usr/bin/", "755"],
+  ["debian/rob-back-end.service", "etc/systemd/system/", "644"],
+  ["debian/env.conf", "etc/systemd/system/rob-back-end.service.d/", "644"],
+  ["README.adoc", "usr/share/doc/rob-back-end/README", "644"],
+  ["db/01-init.sql", "usr/share/doc/rob-back-end/01-init.sql", "644"],
+]
+conf-files = ["etc/systemd/system/rob-back-end.service.d/env.conf"]
 
 [dependencies]
-actix-web = { version = "3", features = ["openssl"] }
+actix-web = { version = "3", features = ["rustls"] }
 serde = "1.0.117"
-sqlx = { version = "0.4.1", features = [ "postgres", "runtime-actix-native-tls", "chrono" ] }
+sqlx = { version = "0.4.1", features = [ "postgres", "runtime-actix-rustls", "chrono" ] }
 anyhow = "1.0.34"
-oauth2 = "3.0.0"
+oauth2 = { git = "https://github.com/ramosbugs/oauth2-rs.git", branch = "main" }
 dotenv = "0.15.0"
 actix-session = "0.4.0"
 actix-files = "0.4.0"
-openssl = "0.10.30"
+rustls = "0.18"
 chrono = { version = "0.4.19", features = [ "serde" ] }
 log = "0.4.11"
 env_logger = "0.8.2"

@@ -4,11 +4,14 @@ use actix_files::{Files, NamedFile};
 use sqlx::postgres::{PgPoolOptions, PgPool};
 use anyhow::Result;
 use std::env;
+use std::io::BufReader;
+use std::fs::File;
 use dotenv::dotenv;
 use oauth2::basic::BasicClient;
 use oauth2::{AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
 use log::debug;
-use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
+use rustls::internal::pemfile::{certs, pkcs8_private_keys};
+use rustls::{NoClientAuth, ServerConfig};
 
 mod routes;
 mod models;
@@ -54,11 +57,21 @@ async fn main() -> Result<()> {
     // front end setup
     let static_dir = env::var("STATIC_DIR").expect("STATIC_DIR is not set in .env file");
 
+    // bind address setup
+    let bind_addr = env::var("BIND_ADDR").expect("BIND_ADDR is not set in .env file");
+
     // ssl setup
-    let cert_dir = env::var("CERT_DIR").expect("CERT_DIR is not set in .env file");
-    let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
-    builder.set_private_key_file(format!("{}/{}", cert_dir, "key.pem"), SslFiletype::PEM).unwrap();
-    builder.set_certificate_chain_file(format!("{}/{}", cert_dir, "cert.pem")).unwrap();
+    let cert_filename = env::var("CERT").expect("CERT is not set in .env file");
+    let key_filename = env::var("KEY").expect("KEY is not set in .env file");
+    let cert_file = File::open(&cert_filename).expect(&format!("Unable to open {}", &cert_filename));
+    let key_file = File::open(&key_filename).expect(&format!("Unable to open {}", &key_filename));
+    let cert_buf = &mut BufReader::new(cert_file);
+    let key_buf = &mut BufReader::new(key_file);
+    let cert_chain = certs(cert_buf).expect("Unable to create cert_chain");
+    let mut keys = pkcs8_private_keys(key_buf).expect("Unable to create private keys");
+    assert!(keys.len() > 0, "Unable to read key from file");
+    let mut config = ServerConfig::new(NoClientAuth::new());  
+    config.set_single_cert(cert_chain, keys.remove(0)).expect("Unable to set_single_cert");
 
     debug!("Starting web server");
     HttpServer::new(move || {
@@ -84,7 +97,7 @@ async fn main() -> Result<()> {
                     }
                 }))
     })
-    .bind_openssl("127.0.0.1:5000", builder)?
+    .bind_rustls(bind_addr, config)?
     .run()
     .await?;
 

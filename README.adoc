@@ -5,8 +5,137 @@ Can we fix it? No, but we can tell you it's broken
 
 A back end for _Rob the Builder_ written in [Rust]
 
-== Configuration
+== Database
 
-=== .env
+_Rob Back End_ uses sqlx with compile-time verification of queries, so a
+database must be running when the package is built. The `db` directory has a
+Docker file for a simple PostgreSQL database that includes SQL initialization
+of the required tables _and_ some sample data to work with. You can use the
+`db/01-init.sql` script to set up a database on another PostgreSQL instance,
+but be sure to add yourself as an instructor at the bottom of the script. 
 
-=== Database
+== Building
+
+_Rob Back End_ targets a static executable using musl by default
+(`.cargo/config`). Make sure you have the build chain installed before running
+cargo build:
+
+[source, console]
+----
+ryan@home:$ rustup target add x86_64-unknown-linux-musl
+ryan@home:$ git pull https://github.com/rxt1077/rob-back-end.git
+ryan@home:$ cd rob-back-end
+ryan@home:rob-back-end$ cargo build --release
+----
+
+== Running
+
+_Rob Back End_ uses environment variables for runtime options. A `.env` file
+can be used to make configuration easier. Here is an example I use for testing:
+
+..env
+[source, bash]
+----
+DATABASE_URL="postgres://postgres:postgres@localhost/rob"
+GOOGLE_CLIENT_ID=<CLIENT-ID>
+GOOGLE_CLIENT_SECRET=<CLIENT-SECRET>
+GOOGLE_REDIRECT_URL="http://localhost:5000/auth"
+STATIC_DIR="static"
+CERT="cert/cert.pem"
+KEY="cert/key.pem"
+RUST_LOG="debug"
+BIND_ADDR="127.0.0.1:5000"
+----
+
+To create a self-signed certificate for testing, you can use openssl:
+
+== Packaging
+
+_Rob Back End_ includes the ability to build a deb package with
+https://github.com/mmstick/cargo-deb[cargo-deb]:
+
+[source, console]
+----
+ryan@home:~/rob-back-end$ cargo install cargo-deb
+ryan@home:~/rob-back-end$ cargo deb
+    Finished release [optimized] target(s) in 4.88s
+~/rob-back-end/target/x86_64-unknown-linux-musl/debian/rob-back-end_0.1.0_amd64.deb
+----
+
+The package includes a systemd service, this README, and an initialization
+script for setting up a database.
+
+== Deployment
+
+Here is an example of deploying _Rob the Builder_ to a new Debian Linode
+instance where `<LINODE_IP>` represents the IP address of the instance and
+`<PASSWORD>` represents your database password.
+
+WARNING: This uses a database running on the same instance, which may or may
+not be the best option depending on your use case.
+
+WARNING: This runs _Rob Run_ _directly_ on your web server, which is almost
+certainly not a great idea.
+
+[source, console]
+----
+ryan@home:~/rob-back-end$ scp target/x86_64-unknown-linux-musl/debian/rob-back-end_0.1.0_amd64.deb root@<LINODE_IP>
+rob-back-end_0.1.0_amd64.deb  100% 4736KB  11.5MB/s   00:00
+ryan@home:~/rob-back-end$ ssh root@<LINODE_IP>
+root@<LINODE_IP>:~# dpkg -i rob-back-end_0.1.0_amd64.deb
+(Reading database ... 30850 files and directories currently installed.)
+Preparing to unpack rob-back-end_0.1.0_amd64.deb ...
+Unpacking rob-back-end (0.1.0) ...
+Setting up rob-back-end (0.1.0) ...
+
+<BE SURE TO EDIT /etc/systemd/system/rob-back-end.service.d/env.conf !!!>
+<BE SURE TO EDIT /usr/share/doc/rob-back-end/01-init.sql !!!>
+
+root@<LINODE_IP>:~# apt-get install postgresql
+<snip>
+root@<LINODE_IP>:~# sudo -u postgres psql < /usr/share/doc/rob-back-end/01-init.sql
+NOTICE:  database "rob" does not exist, skipping
+DROP DATABASE
+CREATE DATABASE
+You are now connected to database "rob" as user "postgres".
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+INSERT 0 1
+root@<LINODE_IP>:~# sudo -u postgres psql
+psql (11.9 (Debian 11.9-0+deb10u1))
+Type "help" for help.
+
+postgres=# CREATE USER rob WITH ENCRYPTED PASSWORD '<PASSWORD>'; 
+CREATE ROLE
+postgres=# GRANT ALL PRIVILEGES ON DATABASE rob TO rob;
+GRANT
+postgres=# quit
+
+root@<LINODE_IP>:~# wget https://github.com/rxt1077/rob-front-end/raw/main/rob-front-end_0.1.0_all.deb
+--2021-01-11 17:20:26--  https://github.com/rxt1077/rob-front-end/raw/main/rob-front-end_0.1.0_all.deb
+Resolving github.com (github.com)... 140.82.112.4
+Connecting to github.com (github.com)|140.82.112.4|:443... connected.
+HTTP request sent, awaiting response... 302 Found
+Location: https://raw.githubusercontent.com/rxt1077/rob-front-end/main/rob-front-end_0.1.0_all.deb [following]
+--2021-01-11 17:20:26--  https://raw.githubusercontent.com/rxt1077/rob-front-end/main/rob-front-end_0.1.0_all.deb
+Resolving raw.githubusercontent.com (raw.githubusercontent.com)... 199.232.36.133
+Connecting to raw.githubusercontent.com (raw.githubusercontent.com)|199.232.36.133|:443... connected.
+HTTP request sent, awaiting response... 200 OK
+Length: 73804 (72K) [application/octet-stream]
+Saving to: ‘rob-front-end_0.1.0_all.deb’
+
+rob-front-end_0.1.0_all.deb   100%[=============>]  72.07K  --.-KB/s    in 0.05s
+
+2021-01-11 17:20:26 (1.53 MB/s) - ‘rob-front-end_0.1.0_all.deb’ saved [73804/73804]
+
+root@<LINODE_IP>:~# dpkg -i rob-front-end_0.1.0_all.deb
+Selecting previously unselected package rob-front-end.
+(Reading database ... 30850 files and directories currently installed.)
+Preparing to unpack rob-front-end_0.1.0_all.deb ...
+Unpacking rob-front-end (0.1.0) ...
+Setting up rob-front-end (0.1.0) ...
+----
+
